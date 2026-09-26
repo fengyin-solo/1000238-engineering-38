@@ -17,14 +17,55 @@
 ├── backend/                  FastAPI（Python） 后端
 │   ├── app/routers/          每个业务模块一组接口
 │   ├── app/services/         业务规则与状态流转
-│   └── app/store.py          内存数据仓库与示例数据
+│   ├── app/store.py          内存数据仓库与示例数据
+│   └── data/                 剧组成员数据源（sample 入库，local/prepared 为本地文件）
+├── scripts/                  本地启动流水线（依赖校验、数据准备、启动前检查、编排、冒烟）
 ├── .gitignore
 └── docker-compose.yml
 ```
 
 ## 启动
 
-### 后端
+推荐使用一键流水线，把**依赖校验 → 剧组成员数据准备 → 启动前检查 → 启动 → 冒烟检查**
+串成一条可重复的流程；任一环节失败都会说明原因并停在该阶段，修好后重跑同一命令即可：
+
+```bash
+make dev-up          # 五阶段全跑；依赖缺失时会停下并提示，先 make check-deps-install 再重跑
+./scripts/dev-up.sh --install   # 等价于 dev-up，但依赖缺失时自动安装修复
+make dev-down        # 停止并清理本流水线拉起的进程（按进程组回收，不留 vite 孤儿）
+```
+
+各阶段也可以单独执行，方便定位问题：
+
+| 命令 | 阶段 | 失败时的行为 |
+| --- | --- | --- |
+| `make check-deps` | 校验 python3 ≥ 3.10、node ≥ 18、后端 venv、前端 node_modules | 列出缺失项与修复命令；加 `--install`（`make check-deps-install`）自动安装 |
+| `make prepare-data` | 校验剧组成员数据源并原子产出 `backend/data/crew.prepared.json` | 报出具体行/字段原因；源文件与已有产物都不改动 |
+| `make preflight` | 数据产物与数据源一致、后端可导入、8000/5173 端口空闲 | 逐项列出原因和修复方式，不启动任何服务 |
+| `make dev-up` | 启动前后端、等待健康、冒烟检查列表与四种状态 | 健康/冒烟失败时自动回收本次已启动的服务 |
+
+冒烟检查会确认 `/api/health` 模块数完整、`/api/crew` 列表中
+**待进场 / 在组 / 已请假 / 已离场** 四种状态各至少一条且筛选接口非空、
+前端 dev server 与 `/api` 代理可用。
+
+### 剧组成员示例数据的两份输入
+
+```text
+backend/data/crew.sample.json      随仓库分发的 canonical 样例（入库，固定进场日期与真实岗位）
+backend/data/crew.local.json       本地覆盖（gitignore；复制 sample 改名后自行修改，脚本永不写它）
+backend/data/crew.prepared.json    准备阶段产物（gitignore，临时文件 + 原子替换生成）
+```
+
+- `prepare-data` 优先读 `crew.local.json`，没有才读 sample；已请假/日期矛盾/岗位不在
+  白名单/状态缺项等问题都会在这一阶段拦下，而不是等服务起来后才发现列表缺项。
+- 产物与数据源用 sha256 绑定：数据源改了但没重新准备，`preflight` 会判为过期并要求重跑；
+  产物已最新时重跑是幂等的，不会产生无意义变更。
+- 后端直接启动（如 `./run.sh`、docker）且没有产物时，回落到 `app/seed.py` 的内置示例，
+  不破坏原有启动方式。
+
+### 手动分步启动（原方式，仍然可用）
+
+后端：
 
 ```bash
 cd backend
@@ -34,7 +75,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 健康检查：`curl http://127.0.0.1:8000/api/health`
 
-### 前端
+前端：
 
 ```bash
 cd frontend

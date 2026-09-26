@@ -85,3 +85,8 @@ desktop.ini
 *.db
 *.pid
 *.seed
+
+# ===== 本地开发流水线产物（由 scripts/ 生成，不入库）=====
+.run/
+backend/data/crew.local.json
+backend/data/crew.prepared.json
