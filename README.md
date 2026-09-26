@@ -24,12 +24,28 @@
 
 ## 启动
 
+### 启动前流水线（preflight）
+
+`make backend` 会先执行 `make preflight`，把数据准备、依赖校验和启动前检查串成一条流程：
+
+1. **依赖校验**：后端虚拟环境与 `requirements.txt`、Python 版本、前端 node/npm；
+2. **数据准备**：校验 `app/seed.py` 示例数据完整且自洽（每个路由模块都有数据、
+   列表字段不缺项、日期合法、状态在允许序列里），只读不改动已有数据，
+   校验通过后把数据清单写入临时目录 `backend/.preflight/`；
+3. **启动前检查**：真实导入 `app.main`、核对内存仓库与数据清单一致、确认端口空闲。
+
+任一环节失败会打印具体原因并以环节序号（1/2/3）作为退出码；每次运行先清空
+临时目录，修复问题后直接重跑即可，不会残留上一次的结果。也可以单独执行：
+
+```bash
+make preflight          # 或 cd backend && python3 preflight.py
+```
+
 ### 后端
 
 ```bash
-cd backend
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-./run.sh
+make install            # 首次：创建虚拟环境并安装前后端依赖
+make backend            # 先跑 preflight，全部通过后启动后端
 ```
 
 健康检查：`curl http://127.0.0.1:8000/api/health`
@@ -37,9 +53,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ### 前端
 
 ```bash
-cd frontend
-npm install
-npm run dev
+make frontend           # 等价于 cd frontend && npm run dev
 ```
 
 前端默认监听 `http://127.0.0.1:5173/`，dev server 不会自动打开浏览器，
